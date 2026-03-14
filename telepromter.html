@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-fullscreen">
+<title>Teleprompter</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+body {
+  background:#000;
+  width:100vw; height:100dvh;
+  overflow:hidden;
+  font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;
+  color:#fff;
+}
+
+#video {
+  position:fixed; inset:0;
+  width:100%; height:100%;
+  object-fit:cover; z-index:1;
+}
+
+.grad-top {
+  position:fixed; top:0; left:0; right:0; height:160px;
+  background:linear-gradient(to bottom,rgba(0,0,0,.75),transparent);
+  z-index:10; pointer-events:none;
+}
+.grad-bot {
+  position:fixed; bottom:0; left:0; right:0; height:300px;
+  background:linear-gradient(to top,rgba(0,0,0,.95),transparent);
+  z-index:10; pointer-events:none;
+}
+
+/* ── REC dot ── */
+#rec-dot {
+  position:fixed; top:18px; left:20px; z-index:30;
+  display:none; align-items:center; gap:6px;
+  background:rgba(0,0,0,.5); border-radius:20px; padding:4px 12px;
+}
+#rec-dot .dot {
+  width:8px; height:8px; border-radius:50%; background:#FF3B30;
+  animation:blink 1s infinite;
+}
+#rec-dot span { font-size:12px; font-weight:700; letter-spacing:.06em; color:#FF3B30; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.1} }
+
+/* ── Top bar ── */
+#top-bar {
+  position:fixed; top:14px; right:16px; z-index:30;
+  display:flex; gap:8px; align-items:center;
+}
+.badge {
+  background:rgba(255,200,0,.15); border:1px solid rgba(255,200,0,.35);
+  border-radius:20px; padding:4px 10px; font-size:11px; color:#ffc800; display:none;
+}
+.cam-btn {
+  background:rgba(255,255,255,.13); border:1px solid rgba(255,255,255,.25);
+  border-radius:20px; padding:5px 14px; font-size:12px; color:#fff; cursor:pointer;
+}
+.cam-btn:active { background:rgba(255,255,255,.25); }
+
+/* ── Scroll text ── */
+#scroll-window {
+  position:fixed; top:56px; left:0; right:0; height:42vh;
+  overflow:hidden; z-index:15; pointer-events:none;
+}
+#scroll-content { padding:0 28px; will-change:transform; }
+#scroll-text {
+  font-size:28px; font-weight:600; line-height:1.6;
+  letter-spacing:.02em; white-space:pre-wrap; word-break:break-word;
+  text-shadow:0 2px 16px rgba(0,0,0,.9),0 0 40px rgba(0,0,0,.6);
+}
+.spacer { height:42vh; }
+
+/* ── Bottom panel ── */
+#bottom {
+  position:fixed; bottom:0; left:0; right:0; z-index:20;
+  padding:12px 18px max(24px,env(safe-area-inset-bottom));
+}
+.glass {
+  background:rgba(18,18,18,.82); backdrop-filter:blur(24px);
+  -webkit-backdrop-filter:blur(24px);
+  border:1px solid rgba(255,255,255,.1); border-radius:22px;
+  padding:14px 16px; margin-bottom:10px;
+}
+.slider-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:12px; }
+.slider-label { display:flex; justify-content:space-between; margin-bottom:6px; }
+.slider-label span:first-child { font-size:10px; color:rgba(255,255,255,.5); letter-spacing:.08em; text-transform:uppercase; }
+.slider-label span:last-child { font-size:11px; color:#fff; font-weight:600; }
+
+input[type=range] {
+  -webkit-appearance:none; appearance:none;
+  width:100%; height:3px;
+  background:rgba(255,255,255,.22); border-radius:2px; outline:none; cursor:pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance:none; width:18px; height:18px;
+  border-radius:50%; background:#fff; box-shadow:0 1px 5px rgba(0,0,0,.5);
+}
+input[type=range]::-moz-range-thumb {
+  width:18px; height:18px; border-radius:50%; background:#fff; border:none;
+}
+
+.mirror-row { display:flex; align-items:center; justify-content:space-between; }
+.mirror-row label { font-size:13px; color:rgba(255,255,255,.72); cursor:pointer; }
+.toggle {
+  width:44px; height:26px; background:rgba(255,255,255,.15);
+  border-radius:13px; border:1px solid rgba(255,255,255,.2);
+  position:relative; cursor:pointer; transition:background .2s; flex-shrink:0;
+}
+.toggle.on { background:rgba(255,255,255,.4); }
+.toggle-thumb {
+  position:absolute; top:3px; left:3px; width:20px; height:20px;
+  background:#fff; border-radius:50%; box-shadow:0 1px 4px rgba(0,0,0,.45);
+  transition:transform .2s;
+}
+.toggle.on .toggle-thumb { transform:translateX(18px); }
+
+textarea {
+  width:100%;
+  background:rgba(18,18,18,.82); backdrop-filter:blur(24px);
+  -webkit-backdrop-filter:blur(24px);
+  border:1px solid rgba(255,255,255,.1); border-radius:18px;
+  color:#fff; font-size:14px; font-family:inherit;
+  padding:12px 16px; resize:none; outline:none; line-height:1.55; display:block;
+}
+textarea::placeholder { color:rgba(255,255,255,.28); }
+textarea:focus { border-color:rgba(255,255,255,.3); }
+
+/* ── Button row ── */
+.btn-row {
+  display:flex; align-items:center; justify-content:center; gap:14px;
+}
+.icon-btn {
+  width:48px; height:48px; border-radius:50%;
+  background:rgba(255,255,255,.13); border:1.5px solid rgba(255,255,255,.28);
+  color:#fff; font-size:20px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; transition:transform .1s,background .15s; flex-shrink:0;
+}
+.icon-btn:active { transform:scale(.92); background:rgba(255,255,255,.22); }
+.icon-btn.recording { background:rgba(255,59,48,.3); border-color:rgba(255,59,48,.7); }
+
+.record-outer {
+  width:76px; height:76px; border-radius:50%;
+  border:4px solid rgba(255,255,255,.88);
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; flex-shrink:0; transition:transform .1s;
+}
+.record-outer:active { transform:scale(.94); }
+.record-inner {
+  width:64px; height:64px; border-radius:50%; background:#FF3B30;
+  display:flex; align-items:center; justify-content:center; transition:background .2s;
+}
+.record-inner.playing { background:#FF9500; }
+
+/* ── Preview modal ── */
+#preview-modal {
+  position:fixed; inset:0; z-index:100;
+  background:rgba(0,0,0,.93); backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+  display:none; flex-direction:column;
+  align-items:center; justify-content:center;
+  padding:28px 20px max(36px,env(safe-area-inset-bottom));
+  gap:16px;
+}
+#preview-modal.show { display:flex; }
+
+.modal-header {
+  display:flex; align-items:center; gap:10px;
+}
+.check-circle {
+  width:30px; height:30px; border-radius:50%; background:#30D158; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+}
+.modal-header h2 { font-size:18px; font-weight:600; }
+
+#preview-video {
+  width:100%; max-width:380px; max-height:52vh;
+  border-radius:18px; background:#111;
+  border:1px solid rgba(255,255,255,.12);
+  object-fit:contain;
+}
+
+.preview-meta {
+  font-size:13px; color:rgba(255,255,255,.45); text-align:center; line-height:1.6;
+}
+
+.modal-btns {
+  display:flex; gap:12px;
+  width:100%; max-width:380px;
+}
+.btn-discard {
+  flex:1; padding:15px; border-radius:16px;
+  background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.18);
+  color:rgba(255,255,255,.65); font-size:15px; font-weight:500;
+  cursor:pointer; font-family:inherit;
+}
+.btn-discard:active { background:rgba(255,255,255,.2); }
+.btn-save {
+  flex:2; padding:15px; border-radius:16px;
+  background:#0A84FF; border:none;
+  color:#fff; font-size:15px; font-weight:600;
+  cursor:pointer; font-family:inherit;
+  display:flex; align-items:center; justify-content:center; gap:8px;
+}
+.btn-save:active { background:#006ee0; }
+
+svg { display:block; }
+</style>
+</head>
+<body>
+
+<video id="video" autoplay muted playsinline></video>
+<div class="grad-top"></div>
+<div class="grad-bot"></div>
+
+<!-- REC indicator -->
+<div id="rec-dot">
+  <div class="dot"></div>
+  <span>REC 00:00</span>
+</div>
+
+<!-- Top bar -->
+<div id="top-bar">
+  <div class="badge" id="wake-badge">⚡ Wake Lock</div>
+  <button class="cam-btn" id="cam-btn" onclick="toggleCamera()">📷 Camera</button>
+</div>
+
+<!-- Scroll window -->
+<div id="scroll-window">
+  <div id="scroll-content">
+    <div id="scroll-text"></div>
+    <div class="spacer"></div>
+  </div>
+</div>
+
+<!-- Bottom controls -->
+<div id="bottom">
+  <div class="glass">
+    <div class="slider-row">
+      <div>
+        <div class="slider-label"><span>Tốc độ</span><span id="speed-val">3</span></div>
+        <input type="range" id="speed-slider" min="1" max="10" value="3" step="1"
+          oninput="speed=+this.value; document.getElementById('speed-val').textContent=this.value">
+      </div>
+      <div>
+        <div class="slider-label"><span>Cỡ chữ</span><span id="size-val">28</span></div>
+        <input type="range" id="size-slider" min="16" max="52" value="28" step="2"
+          oninput="document.getElementById('scroll-text').style.fontSize=this.value+'px'; document.getElementById('size-val').textContent=this.value">
+      </div>
+    </div>
+    <div class="mirror-row">
+      <label>🪞 Mirror Mode</label>
+      <div class="toggle" id="mirror-toggle" onclick="toggleMirror()">
+        <div class="toggle-thumb"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="script-panel" style="margin-bottom:10px;">
+    <textarea id="script-input" rows="3"
+      placeholder="Dán kịch bản vào đây...&#10;▶ = cuộn chữ  |  🔴 = quay video"></textarea>
+  </div>
+
+  <div class="btn-row">
+    <!-- Reset -->
+    <button class="icon-btn" onclick="resetScroll()" title="Reset">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round">
+        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+        <path d="M3 3v5h5"/>
+      </svg>
+    </button>
+
+    <!-- Teleprompter play/pause (big red) -->
+    <div class="record-outer" onclick="togglePlay()">
+      <div class="record-inner" id="record-inner">
+        <svg id="icon-play" width="22" height="22" viewBox="0 0 24 24" fill="white"><polygon points="6,3 20,12 6,21"/></svg>
+        <svg id="icon-pause" width="22" height="22" viewBox="0 0 24 24" fill="white" style="display:none">
+          <rect x="5" y="4" width="4" height="16" rx="1"/>
+          <rect x="15" y="4" width="4" height="16" rx="1"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- REC video button -->
+    <button class="icon-btn" id="rec-btn" onclick="toggleRecord()" title="Quay video">
+      <svg width="22" height="22" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" fill="rgba(255,59,48,.25)" stroke="#FF3B30" stroke-width="1.5"/>
+        <circle cx="12" cy="12" r="5" fill="#FF3B30"/>
+      </svg>
+    </button>
+
+    <!-- Edit/hide script -->
+    <button class="icon-btn" onclick="togglePanel()" title="Kịch bản">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round">
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<!-- ── Preview Modal ── -->
+<div id="preview-modal">
+  <div class="modal-header">
+    <div class="check-circle">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <h2>Video đã sẵn sàng!</h2>
+  </div>
+
+  <video id="preview-video" controls playsinline></video>
+
+  <p class="preview-meta" id="preview-meta">Đang xử lý...</p>
+
+  <div class="modal-btns">
+    <button class="btn-discard" onclick="discardVideo()">🗑 Xoá</button>
+    <button class="btn-save" onclick="downloadVideo()">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Tải về máy
+    </button>
+  </div>
+</div>
+
+<script>
+// ── Teleprompter ─────────────────────────────────────────────────────────────
+let isPlaying = false, isMirror = false, speed = 3;
+let scrollY = 0, rafId = null, lastTs = null;
+
+const win  = document.getElementById('scroll-window');
+const cont = document.getElementById('scroll-content');
+const txt  = document.getElementById('scroll-text');
+const inp  = document.getElementById('script-input');
+
+inp.value = "Xin chào và chào mừng đến với buổi phát sóng hôm nay!\n\nHôm nay chúng ta sẽ cùng nhau khám phá những tính năng thú vị của ứng dụng Teleprompter này.\n\nHãy dán kịch bản của bạn vào ô bên dưới.\n\nNhấn ▶ để bắt đầu cuộn chữ.\nNhấn 🔴 để bắt đầu quay video — nhấn lần nữa để dừng và xem preview.\n\nChúc bạn có buổi quay thành công! 🎬";
+loadText();
+
+function loadText() {
+  txt.textContent = inp.value;
+  scrollY = win.offsetHeight;
+  applyT();
+}
+function applyT() {
+  cont.style.transform = `translateY(${scrollY}px) scaleX(${isMirror ? -1 : 1})`;
+}
+
+function tick(ts) {
+  if (!isPlaying) return;
+  if (!lastTs) lastTs = ts;
+  const dt = ts - lastTs; lastTs = ts;
+  scrollY -= (speed * 28 * dt) / 1000;
+  const maxUp = -(cont.scrollHeight - 40);
+  if (scrollY <= maxUp) { scrollY = maxUp; applyT(); stopPlay(); return; }
+  applyT();
+  rafId = requestAnimationFrame(tick);
+}
+
+function stopPlay() {
+  isPlaying = false;
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  document.getElementById('icon-play').style.display  = 'block';
+  document.getElementById('icon-pause').style.display = 'none';
+  document.getElementById('record-inner').classList.remove('playing');
+  document.getElementById('script-panel').style.cssText = 'margin-bottom:10px;opacity:1;pointer-events:auto;transition:opacity .3s';
+  releaseWakeLock();
+}
+
+function togglePlay() {
+  if (!inp.value.trim()) { inp.focus(); return; }
+  if (isPlaying) { stopPlay(); return; }
+  loadText(); isPlaying = true; lastTs = null;
+  document.getElementById('icon-play').style.display  = 'none';
+  document.getElementById('icon-pause').style.display = 'block';
+  document.getElementById('record-inner').classList.add('playing');
+  document.getElementById('script-panel').style.cssText = 'margin-bottom:10px;opacity:0;pointer-events:none;transition:opacity .3s';
+  requestWakeLock();
+  rafId = requestAnimationFrame(tick);
+}
+
+function resetScroll() { stopPlay(); loadText(); }
+
+function toggleMirror() {
+  isMirror = !isMirror;
+  document.getElementById('mirror-toggle').classList.toggle('on', isMirror);
+  applyT();
+}
+
+function togglePanel() {
+  const p = document.getElementById('script-panel');
+  const hidden = p.style.display === 'none';
+  p.style.display = hidden ? 'block' : 'none';
+  if (hidden) loadText();
+}
+
+inp.addEventListener('input', () => { if (!isPlaying) loadText(); });
+
+// ── Camera ───────────────────────────────────────────────────────────────────
+let camStream = null;
+
+async function toggleCamera() {
+  const btn = document.getElementById('cam-btn');
+  if (camStream) {
+    if (isRecording) stopRecord();
+    camStream.getTracks().forEach(t => t.stop());
+    camStream = null;
+    document.getElementById('video').srcObject = null;
+    btn.textContent = '📷 Camera';
+    return;
+  }
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: true
+    });
+    document.getElementById('video').srcObject = camStream;
+    btn.textContent = '⏹ Tắt Cam';
+  } catch(e) {
+    alert('Không thể mở camera:\n' + e.message + '\n\nCần mở qua HTTPS hoặc localhost.');
+  }
+}
+
+// ── Recording ────────────────────────────────────────────────────────────────
+let mediaRecorder = null, recordedChunks = [], isRecording = false;
+let recordBlob = null, recTimer = null, recSec = 0;
+
+function toggleRecord() {
+  if (!camStream) { alert('Hãy bật Camera trước!'); return; }
+  isRecording ? stopRecord() : startRecord();
+}
+
+function startRecord() {
+  recordedChunks = []; recordBlob = null; recSec = 0;
+
+  const mime = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm','video/mp4']
+               .find(m => MediaRecorder.isTypeSupported(m)) || '';
+  try {
+    mediaRecorder = new MediaRecorder(camStream, mime ? { mimeType: mime } : {});
+  } catch(_) {
+    mediaRecorder = new MediaRecorder(camStream);
+  }
+
+  mediaRecorder.ondataavailable = e => { if (e.data?.size > 0) recordedChunks.push(e.data); };
+  mediaRecorder.onstop = () => {
+    const type = mediaRecorder.mimeType || 'video/webm';
+    recordBlob = new Blob(recordedChunks, { type });
+    showPreview(recordBlob);
+  };
+  mediaRecorder.start(100);
+  isRecording = true;
+
+  document.getElementById('rec-dot').style.display = 'flex';
+  document.getElementById('rec-btn').classList.add('recording');
+  recSec = 0; updateTimer();
+  recTimer = setInterval(updateTimer, 1000);
+}
+
+function stopRecord() {
+  if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+  mediaRecorder.stop();
+  isRecording = false;
+  clearInterval(recTimer);
+  document.getElementById('rec-dot').style.display = 'none';
+  document.getElementById('rec-btn').classList.remove('recording');
+}
+
+function updateTimer() {
+  const m = String(Math.floor(recSec/60)).padStart(2,'0');
+  const s = String(recSec%60).padStart(2,'0');
+  document.querySelector('#rec-dot span').textContent = `REC ${m}:${s}`;
+  recSec++;
+}
+
+// ── Preview & Download ───────────────────────────────────────────────────────
+function showPreview(blob) {
+  const url = URL.createObjectURL(blob);
+  const pv = document.getElementById('preview-video');
+  pv.src = url;
+
+  const mb = (blob.size / 1048576).toFixed(2);
+  const kb = Math.round(blob.size / 1024);
+  const size = blob.size > 1048576 ? `${mb} MB` : `${kb} KB`;
+  const fmt  = blob.type.includes('mp4') ? 'MP4' : 'WebM';
+  const dur  = String(Math.floor((recSec-1)/60)).padStart(2,'0') + ':' + String((recSec-1)%60).padStart(2,'0');
+  document.getElementById('preview-meta').textContent = `Định dạng: ${fmt}  ·  Thời lượng: ~${dur}  ·  ${size}`;
+
+  document.getElementById('preview-modal').classList.add('show');
+}
+
+function downloadVideo() {
+  if (!recordBlob) return;
+  const ext = recordBlob.type.includes('mp4') ? 'mp4' : 'webm';
+  const now = new Date();
+  const stamp = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(recordBlob);
+  a.download = `teleprompter_${stamp}.${ext}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(closePreview, 600);
+}
+
+function discardVideo() {
+  recordBlob = null; recordedChunks = [];
+  closePreview();
+}
+
+function closePreview() {
+  const pv = document.getElementById('preview-video');
+  pv.pause();
+  const old = pv.src;
+  pv.src = '';
+  if (old) URL.revokeObjectURL(old);
+  document.getElementById('preview-modal').classList.remove('show');
+}
+
+// ── Wake Lock ────────────────────────────────────────────────────────────────
+let wakeLock = null;
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try { wakeLock = await navigator.wakeLock.request('screen');
+    document.getElementById('wake-badge').style.display = 'inline-block'; } catch(_){}
+}
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release(); wakeLock = null; }
+  document.getElementById('wake-badge').style.display = 'none';
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && isPlaying) requestWakeLock();
+});
+</script>
+</body>
+</html>
