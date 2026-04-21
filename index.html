@@ -17,10 +17,20 @@ body {
   color:#fff;
 }
 
+/* ── Video layers ── */
 #video {
   position:fixed; inset:0;
   width:100%; height:100%;
   object-fit:cover; z-index:1;
+  display:none; /* hidden – beauty canvas replaces it */
+}
+
+/* Beauty canvas shows the filtered output */
+#beauty-canvas {
+  position:fixed; inset:0;
+  width:100%; height:100%;
+  object-fit:cover; z-index:1;
+  display:none;
 }
 
 .grad-top {
@@ -61,6 +71,56 @@ body {
   border-radius:20px; padding:5px 14px; font-size:12px; color:#fff; cursor:pointer;
 }
 .cam-btn:active { background:rgba(255,255,255,.25); }
+
+/* ── Beauty controls panel ── */
+#beauty-panel {
+  position:fixed; top:56px; left:16px; z-index:25;
+  display:none; flex-direction:column; gap:6px;
+}
+#beauty-panel.visible { display:flex; }
+
+.beauty-pill {
+  background:rgba(18,18,18,.78); backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.12); border-radius:14px;
+  padding:8px 12px; display:flex; align-items:center; gap:8px;
+  min-width:180px;
+}
+.beauty-pill label {
+  font-size:10px; color:rgba(255,255,255,.5);
+  text-transform:uppercase; letter-spacing:.07em;
+  min-width:56px; flex-shrink:0;
+}
+.beauty-pill input[type=range] {
+  -webkit-appearance:none; appearance:none;
+  flex:1; height:3px;
+  background:rgba(255,255,255,.22); border-radius:2px; outline:none; cursor:pointer;
+}
+.beauty-pill input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance:none; width:16px; height:16px;
+  border-radius:50%; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.5);
+}
+.beauty-pill span.val {
+  font-size:11px; color:#fff; font-weight:600; min-width:24px; text-align:right;
+}
+
+/* Beauty presets row */
+.preset-row {
+  display:flex; gap:6px; flex-wrap:wrap;
+}
+.preset-btn {
+  background:rgba(18,18,18,.78); backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.15); border-radius:20px;
+  padding:5px 13px; font-size:11px; color:rgba(255,255,255,.75);
+  cursor:pointer; font-family:inherit; transition:all .15s;
+  white-space:nowrap;
+}
+.preset-btn:active, .preset-btn.active {
+  background:rgba(255,255,255,.22);
+  border-color:rgba(255,255,255,.5);
+  color:#fff;
+}
 
 /* ── Scroll text ── */
 #scroll-window {
@@ -143,6 +203,10 @@ textarea:focus { border-color:rgba(255,255,255,.3); }
 }
 .icon-btn:active { transform:scale(.92); background:rgba(255,255,255,.22); }
 .icon-btn.recording { background:rgba(255,59,48,.3); border-color:rgba(255,59,48,.7); }
+.icon-btn.beauty-active {
+  background:rgba(255,105,180,.25);
+  border-color:rgba(255,105,180,.7);
+}
 
 .record-outer {
   width:76px; height:76px; border-radius:50%;
@@ -169,9 +233,7 @@ textarea:focus { border-color:rgba(255,255,255,.3); }
 }
 #preview-modal.show { display:flex; }
 
-.modal-header {
-  display:flex; align-items:center; gap:10px;
-}
+.modal-header { display:flex; align-items:center; gap:10px; }
 .check-circle {
   width:30px; height:30px; border-radius:50%; background:#30D158; flex-shrink:0;
   display:flex; align-items:center; justify-content:center;
@@ -185,14 +247,9 @@ textarea:focus { border-color:rgba(255,255,255,.3); }
   object-fit:contain;
 }
 
-.preview-meta {
-  font-size:13px; color:rgba(255,255,255,.45); text-align:center; line-height:1.6;
-}
+.preview-meta { font-size:13px; color:rgba(255,255,255,.45); text-align:center; line-height:1.6; }
 
-.modal-btns {
-  display:flex; gap:12px;
-  width:100%; max-width:380px;
-}
+.modal-btns { display:flex; gap:12px; width:100%; max-width:380px; }
 .btn-discard {
   flex:1; padding:15px; border-radius:16px;
   background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.18);
@@ -214,7 +271,12 @@ svg { display:block; }
 </head>
 <body>
 
+<!-- Raw camera video (hidden, used as source for canvas) -->
 <video id="video" autoplay muted playsinline></video>
+
+<!-- Beauty-filtered canvas (shown instead of video) -->
+<canvas id="beauty-canvas"></canvas>
+
 <div class="grad-top"></div>
 <div class="grad-bot"></div>
 
@@ -228,6 +290,56 @@ svg { display:block; }
 <div id="top-bar">
   <div class="badge" id="wake-badge">⚡ Wake Lock</div>
   <button class="cam-btn" id="cam-btn" onclick="toggleCamera()">📷 Camera</button>
+</div>
+
+<!-- ── Beauty Panel ── -->
+<div id="beauty-panel">
+  <!-- Presets -->
+  <div class="preset-row">
+    <button class="preset-btn active" id="preset-natural" onclick="applyPreset('natural')">✨ Tự nhiên</button>
+    <button class="preset-btn" id="preset-tiktok"   onclick="applyPreset('tiktok')">🎵 TikTok</button>
+    <button class="preset-btn" id="preset-insta"    onclick="applyPreset('insta')">📸 Insta</button>
+    <button class="preset-btn" id="preset-soft"     onclick="applyPreset('soft')">🌸 Mềm</button>
+    <button class="preset-btn" id="preset-off"      onclick="applyPreset('off')">❌ Tắt</button>
+  </div>
+
+  <!-- Manual sliders -->
+  <div class="beauty-pill">
+    <label>Làm mịn</label>
+    <input type="range" id="b-smooth" min="0" max="10" value="4" step="1"
+      oninput="beauty.smooth=+this.value;updateVal('b-smooth-val',this.value)">
+    <span class="val" id="b-smooth-val">4</span>
+  </div>
+  <div class="beauty-pill">
+    <label>Sáng da</label>
+    <input type="range" id="b-bright" min="90" max="140" value="108" step="1"
+      oninput="beauty.brightness=+this.value;updateVal('b-bright-val',this.value)">
+    <span class="val" id="b-bright-val">108</span>
+  </div>
+  <div class="beauty-pill">
+    <label>Contrast</label>
+    <input type="range" id="b-contrast" min="85" max="130" value="105" step="1"
+      oninput="beauty.contrast=+this.value;updateVal('b-contrast-val',this.value)">
+    <span class="val" id="b-contrast-val">105</span>
+  </div>
+  <div class="beauty-pill">
+    <label>Bão hòa</label>
+    <input type="range" id="b-sat" min="80" max="140" value="110" step="1"
+      oninput="beauty.saturation=+this.value;updateVal('b-sat-val',this.value)">
+    <span class="val" id="b-sat-val">110</span>
+  </div>
+  <div class="beauty-pill">
+    <label>Ấm áp</label>
+    <input type="range" id="b-warm" min="0" max="20" value="6" step="1"
+      oninput="beauty.warm=+this.value;updateVal('b-warm-val',this.value)">
+    <span class="val" id="b-warm-val">6</span>
+  </div>
+  <div class="beauty-pill">
+    <label>Sắc nét</label>
+    <input type="range" id="b-sharp" min="0" max="10" value="2" step="1"
+      oninput="beauty.sharpen=+this.value;updateVal('b-sharp-val',this.value)">
+    <span class="val" id="b-sharp-val">2</span>
+  </div>
 </div>
 
 <!-- Scroll window -->
@@ -275,7 +387,7 @@ svg { display:block; }
       </svg>
     </button>
 
-    <!-- Teleprompter play/pause (big red) -->
+    <!-- Teleprompter play/pause -->
     <div class="record-outer" onclick="togglePlay()">
       <div class="record-inner" id="record-inner">
         <svg id="icon-play" width="22" height="22" viewBox="0 0 24 24" fill="white"><polygon points="6,3 20,12 6,21"/></svg>
@@ -286,12 +398,17 @@ svg { display:block; }
       </div>
     </div>
 
-    <!-- REC video button -->
+    <!-- REC button -->
     <button class="icon-btn" id="rec-btn" onclick="toggleRecord()" title="Quay video">
       <svg width="22" height="22" viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="9" fill="rgba(255,59,48,.25)" stroke="#FF3B30" stroke-width="1.5"/>
         <circle cx="12" cy="12" r="5" fill="#FF3B30"/>
       </svg>
+    </button>
+
+    <!-- Beauty toggle -->
+    <button class="icon-btn" id="beauty-btn" onclick="toggleBeautyPanel()" title="Làm đẹp">
+      ✨
     </button>
 
     <!-- Edit/hide script -->
@@ -304,7 +421,7 @@ svg { display:block; }
   </div>
 </div>
 
-<!-- ── Preview Modal ── -->
+<!-- Preview Modal -->
 <div id="preview-modal">
   <div class="modal-header">
     <div class="check-circle">
@@ -312,11 +429,8 @@ svg { display:block; }
     </div>
     <h2>Video đã sẵn sàng!</h2>
   </div>
-
   <video id="preview-video" controls playsinline></video>
-
   <p class="preview-meta" id="preview-meta">Đang xử lý...</p>
-
   <div class="modal-btns">
     <button class="btn-discard" onclick="discardVideo()">🗑 Xoá</button>
     <button class="btn-save" onclick="downloadVideo()">
@@ -351,7 +465,6 @@ function loadText() {
 function applyT() {
   cont.style.transform = `translateY(${scrollY}px) scaleX(${isMirror ? -1 : 1})`;
 }
-
 function tick(ts) {
   if (!isPlaying) return;
   if (!lastTs) lastTs = ts;
@@ -362,7 +475,6 @@ function tick(ts) {
   applyT();
   rafId = requestAnimationFrame(tick);
 }
-
 function stopPlay() {
   isPlaying = false;
   if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
@@ -372,7 +484,6 @@ function stopPlay() {
   document.getElementById('script-panel').style.cssText = 'margin-bottom:10px;opacity:1;pointer-events:auto;transition:opacity .3s';
   releaseWakeLock();
 }
-
 function togglePlay() {
   if (!inp.value.trim()) { inp.focus(); return; }
   if (isPlaying) { stopPlay(); return; }
@@ -384,34 +495,210 @@ function togglePlay() {
   requestWakeLock();
   rafId = requestAnimationFrame(tick);
 }
-
 function resetScroll() { stopPlay(); loadText(); }
-
 function toggleMirror() {
   isMirror = !isMirror;
   document.getElementById('mirror-toggle').classList.toggle('on', isMirror);
   applyT();
 }
-
 function togglePanel() {
   const p = document.getElementById('script-panel');
   const hidden = p.style.display === 'none';
   p.style.display = hidden ? 'block' : 'none';
   if (hidden) loadText();
 }
-
 inp.addEventListener('input', () => { if (!isPlaying) loadText(); });
 
-// ── Camera ───────────────────────────────────────────────────────────────────
+// ── Beauty Engine ─────────────────────────────────────────────────────────────
+// All filter values; canvas renders every frame
+const beauty = {
+  smooth:     4,    // 0-10 : blur radius for skin smoothing
+  brightness: 108,  // % CSS brightness
+  contrast:   105,  // %
+  saturation: 110,  // %
+  warm:       6,    // 0-20 : warm colour overlay opacity (%)
+  sharpen:    2,    // 0-10 : unsharp-mask strength
+};
+
+const presets = {
+  off:     { smooth:0,  brightness:100, contrast:100, saturation:100, warm:0,  sharpen:0 },
+  natural: { smooth:4,  brightness:108, contrast:105, saturation:110, warm:6,  sharpen:2 },
+  tiktok:  { smooth:6,  brightness:115, contrast:108, saturation:120, warm:8,  sharpen:3 },
+  insta:   { smooth:5,  brightness:112, contrast:112, saturation:115, warm:5,  sharpen:4 },
+  soft:    { smooth:8,  brightness:118, contrast:100, saturation:105, warm:12, sharpen:0 },
+};
+
+function applyPreset(name) {
+  const p = presets[name]; if (!p) return;
+  Object.assign(beauty, p);
+  // sync sliders & labels
+  setSlider('b-smooth',   'b-smooth-val',   beauty.smooth);
+  setSlider('b-bright',   'b-bright-val',   beauty.brightness);
+  setSlider('b-contrast', 'b-contrast-val', beauty.contrast);
+  setSlider('b-sat',      'b-sat-val',      beauty.saturation);
+  setSlider('b-warm',     'b-warm-val',     beauty.warm);
+  setSlider('b-sharp',    'b-sharp-val',    beauty.sharpen);
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  const el = document.getElementById('preset-' + name);
+  if (el) el.classList.add('active');
+}
+
+function setSlider(id, valId, val) {
+  const el = document.getElementById(id);
+  if (el) el.value = val;
+  const vl = document.getElementById(valId);
+  if (vl) vl.textContent = val;
+}
+
+function updateVal(id, val) {
+  document.getElementById(id).textContent = val;
+  // deactivate any preset since user customised
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+}
+
+// ── Canvas beauty render loop ─────────────────────────────────────────────────
+const beautyCanvas = document.getElementById('beauty-canvas');
+const bCtx = beautyCanvas.getContext('2d', { willReadFrequently: true });
+const videoEl = document.getElementById('video');
+
+let beautyRaf = null;
+let beautyEnabled = false; // only when camera is on
+
+/*
+  Strategy (no WebGL needed, runs on mobile Safari / Chrome):
+  1. Draw raw frame to canvas (full-res).
+  2. Apply CSS filter = brightness / contrast / saturate (GPU-accelerated by browser).
+  3. For skin-smoothing: draw a slightly blurred copy on top at low alpha (box-blur via CSS).
+  4. Warm tone: fill a translucent warm rectangle over the image.
+  5. Sharpen: unsharp-mask via getImageData only when sharpen > 0 (throttled to every 3rd frame).
+
+  CSS filter on the canvas element itself handles brightness/contrast/saturation perfectly.
+  The warm overlay + smooth duplicate are drawn inside the canvas draw call.
+*/
+
+// Offscreen canvas for the smooth pass
+const smoothCanvas = document.createElement('canvas');
+const sCtx = smoothCanvas.getContext('2d');
+
+let frameCount = 0;
+
+function beautyLoop() {
+  if (!beautyEnabled || videoEl.readyState < 2) {
+    beautyRaf = requestAnimationFrame(beautyLoop);
+    return;
+  }
+
+  const vw = videoEl.videoWidth  || 640;
+  const vh = videoEl.videoHeight || 480;
+
+  // Resize canvases once or on change
+  if (beautyCanvas.width !== vw || beautyCanvas.height !== vh) {
+    beautyCanvas.width  = vw;
+    beautyCanvas.height = vh;
+    smoothCanvas.width  = vw;
+    smoothCanvas.height = vh;
+  }
+
+  frameCount++;
+
+  // ── 1. Apply CSS filter for brightness / contrast / saturation ──
+  const cssFilter = `brightness(${beauty.brightness}%) contrast(${beauty.contrast}%) saturate(${beauty.saturation}%)`;
+  beautyCanvas.style.filter = cssFilter;
+
+  // ── 2. Draw raw frame ──
+  bCtx.clearRect(0, 0, vw, vh);
+  bCtx.drawImage(videoEl, 0, 0, vw, vh);
+
+  // ── 3. Skin-smoothing: draw video blurred on top at partial alpha ──
+  if (beauty.smooth > 0) {
+    // We draw the video into smoothCanvas with a CSS blur filter via OffscreenCanvas trick:
+    // Instead, we use globalAlpha + the browser-level filter on a temporary canvas.
+    // Quickest approach: shadow blur on small scaled copy.
+    const blurPx = beauty.smooth * 1.5; // max ~15px blur
+    bCtx.save();
+    bCtx.filter = `blur(${blurPx}px)`;
+    bCtx.globalAlpha = 0.45; // layer blurred on top
+    bCtx.drawImage(videoEl, 0, 0, vw, vh);
+    bCtx.filter = 'none';
+    bCtx.globalAlpha = 1;
+    bCtx.restore();
+  }
+
+  // ── 4. Warm overlay ──
+  if (beauty.warm > 0) {
+    bCtx.save();
+    bCtx.globalAlpha = beauty.warm / 120; // very subtle warm tint
+    bCtx.fillStyle = '#FF9A5C'; // warm amber
+    bCtx.fillRect(0, 0, vw, vh);
+    bCtx.globalAlpha = 1;
+    bCtx.restore();
+  }
+
+  // ── 5. Subtle unsharp-mask / sharpening (every 4th frame, expensive) ──
+  if (beauty.sharpen > 0 && frameCount % 4 === 0) {
+    try {
+      const amount = beauty.sharpen * 0.04; // 0.04 – 0.40
+      const idata  = bCtx.getImageData(0, 0, vw, vh);
+      unsharpMask(idata.data, vw, vh, amount);
+      bCtx.putImageData(idata, 0, 0);
+    } catch(_) { /* cross-origin guard */ }
+  }
+
+  beautyRaf = requestAnimationFrame(beautyLoop);
+}
+
+/* Lightweight unsharp mask (only luma channel, 1-pixel radius) */
+function unsharpMask(data, w, h, amount) {
+  const copy = new Uint8ClampedArray(data);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = (y * w + x) * 4;
+      for (let c = 0; c < 3; c++) {
+        // simple 3x3 box blur sample (4 neighbours)
+        const blurred = (
+          copy[i - w*4 + c] + copy[i + w*4 + c] +
+          copy[i - 4 + c]   + copy[i + 4 + c] +
+          copy[i + c] * 4
+        ) / 8;
+        const diff = copy[i + c] - blurred;
+        data[i + c] = Math.min(255, Math.max(0, copy[i + c] + diff * amount));
+      }
+    }
+  }
+}
+
+function startBeautyLoop() {
+  beautyEnabled = true;
+  beautyCanvas.style.display = 'block';
+  if (!beautyRaf) beautyRaf = requestAnimationFrame(beautyLoop);
+}
+
+function stopBeautyLoop() {
+  beautyEnabled = false;
+  if (beautyRaf) { cancelAnimationFrame(beautyRaf); beautyRaf = null; }
+  beautyCanvas.style.display = 'none';
+  beautyCanvas.style.filter = 'none';
+}
+
+// ── Beauty Panel toggle ───────────────────────────────────────────────────────
+let beautyPanelOpen = false;
+function toggleBeautyPanel() {
+  beautyPanelOpen = !beautyPanelOpen;
+  document.getElementById('beauty-panel').classList.toggle('visible', beautyPanelOpen);
+  document.getElementById('beauty-btn').classList.toggle('beauty-active', beautyPanelOpen);
+}
+
+// ── Camera ────────────────────────────────────────────────────────────────────
 let camStream = null;
 
 async function toggleCamera() {
   const btn = document.getElementById('cam-btn');
   if (camStream) {
     if (isRecording) stopRecord();
+    stopBeautyLoop();
     camStream.getTracks().forEach(t => t.stop());
     camStream = null;
-    document.getElementById('video').srcObject = null;
+    videoEl.srcObject = null;
     btn.textContent = '📷 Camera';
     return;
   }
@@ -420,16 +707,28 @@ async function toggleCamera() {
       video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
       audio: true
     });
-    document.getElementById('video').srcObject = camStream;
+    videoEl.srcObject = camStream;
+    videoEl.onloadedmetadata = () => {
+      startBeautyLoop();
+    };
     btn.textContent = '⏹ Tắt Cam';
   } catch(e) {
     alert('Không thể mở camera:\n' + e.message + '\n\nCần mở qua HTTPS hoặc localhost.');
   }
 }
 
-// ── Recording ────────────────────────────────────────────────────────────────
+// ── Recording ─────────────────────────────────────────────────────────────────
+// We record from the beauty CANVAS stream so the recorded video includes filters!
 let mediaRecorder = null, recordedChunks = [], isRecording = false;
 let recordBlob = null, recTimer = null, recSec = 0;
+
+function getRecordStream() {
+  // Capture the beauty canvas at 30fps + original audio track
+  const canvasStream = beautyCanvas.captureStream(30);
+  const audioTracks  = camStream ? camStream.getAudioTracks() : [];
+  audioTracks.forEach(t => canvasStream.addTrack(t));
+  return canvasStream;
+}
 
 function toggleRecord() {
   if (!camStream) { alert('Hãy bật Camera trước!'); return; }
@@ -439,12 +738,13 @@ function toggleRecord() {
 function startRecord() {
   recordedChunks = []; recordBlob = null; recSec = 0;
 
+  const stream = getRecordStream();
   const mime = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm','video/mp4']
                .find(m => MediaRecorder.isTypeSupported(m)) || '';
   try {
-    mediaRecorder = new MediaRecorder(camStream, mime ? { mimeType: mime } : {});
+    mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
   } catch(_) {
-    mediaRecorder = new MediaRecorder(camStream);
+    mediaRecorder = new MediaRecorder(stream);
   }
 
   mediaRecorder.ondataavailable = e => { if (e.data?.size > 0) recordedChunks.push(e.data); };
@@ -478,7 +778,7 @@ function updateTimer() {
   recSec++;
 }
 
-// ── Preview & Download ───────────────────────────────────────────────────────
+// ── Preview & Download ────────────────────────────────────────────────────────
 function showPreview(blob) {
   const url = URL.createObjectURL(blob);
   const pv = document.getElementById('preview-video');
@@ -522,7 +822,7 @@ function closePreview() {
   document.getElementById('preview-modal').classList.remove('show');
 }
 
-// ── Wake Lock ────────────────────────────────────────────────────────────────
+// ── Wake Lock ─────────────────────────────────────────────────────────────────
 let wakeLock = null;
 async function requestWakeLock() {
   if (!('wakeLock' in navigator)) return;
